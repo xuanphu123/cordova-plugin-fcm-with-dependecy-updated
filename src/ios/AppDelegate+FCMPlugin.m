@@ -212,7 +212,9 @@ fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
 }
 
 + (void)deleteInstanceId:(void (^)(NSError *error))handler {
-    [[FIRInstanceID instanceID] deleteIDWithHandler:handler];
+    // Firebase 9+ removed FIRInstanceID; FIRMessaging deleteDataWithCompletion deletes the
+    // FCM token + registration data and takes the same void(^)(NSError *) block.
+    [[FIRMessaging messaging] deleteDataWithCompletion:handler];
 }
 
 + (void)hasPushPermission:(void (^)(NSNumber* yesNoOrNil))block {

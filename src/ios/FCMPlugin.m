@@ -67,18 +67,31 @@ static FCMPlugin *fcmPluginInstance;
 }
 
 - (void)returnTokenOrRetry:(void (^)(NSString* fcmToken))onSuccess {
-    NSString* fcmToken = [AppDelegate getFCMToken];
-    if(fcmToken != nil) {
-        onSuccess(fcmToken);
+    // Prefer the token already delivered via didReceiveRegistrationToken.
+    NSString* cachedToken = [AppDelegate getFCMToken];
+    if(cachedToken != nil) {
+        onSuccess(cachedToken);
         return;
     }
-    SEL thisMethodSelector = NSSelectorFromString(@"returnTokenOrRetry:");
-    NSLog(@"FCMToken unavailable, it'll retry in one second");
-    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:[self methodSignatureForSelector:thisMethodSelector]];
-    [invocation setSelector:thisMethodSelector];
-    [invocation setTarget:self];
-    [invocation setArgument:&(onSuccess) atIndex:2]; //arguments 0 and 1 are self and _cmd respectively, automatically set by NSInvocationion
-    [NSTimer scheduledTimerWithTimeInterval:1 invocation:invocation repeats:NO];
+    // Ask Firebase directly. On a rebuild-over-install Firebase can already hold a valid (cached)
+    // token and never re-fires didReceiveRegistrationToken, so the delegate-populated static stays
+    // nil forever -> "unavailable" loops. tokenWithCompletion returns the cached/fresh token once
+    // the APNs token is set.
+    [[FIRMessaging messaging] tokenWithCompletion:^(NSString * _Nullable token, NSError * _Nullable error) {
+        if(token != nil) {
+            onSuccess(token);
+            return;
+        }
+        NSLog(@"FCMToken unavailable (%@), it'll retry in one second", error.localizedDescription);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            SEL thisMethodSelector = NSSelectorFromString(@"returnTokenOrRetry:");
+            NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:[self methodSignatureForSelector:thisMethodSelector]];
+            [invocation setSelector:thisMethodSelector];
+            [invocation setTarget:self];
+            [invocation setArgument:&(onSuccess) atIndex:2]; //arguments 0 and 1 are self and _cmd respectively, automatically set by NSInvocation
+            [NSTimer scheduledTimerWithTimeInterval:1 invocation:invocation repeats:NO];
+        });
+    }];
 }
 
 - (void)getAPNSToken:(CDVInvokedUrlCommand *)command  {

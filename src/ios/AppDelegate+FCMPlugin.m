@@ -71,6 +71,14 @@ FCMNotificationCenterDelegate *notificationCenterDelegate;
 }
 
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceTokenData {
+    // On a rebuild-over-install (notification permission already granted), APNs registration can
+    // complete before the deferred configureForNotifications (+0.3s) runs. If Firebase isn't
+    // configured yet, setting APNSToken is lost -> FCM keeps reporting "APNS device token not set"
+    // / token unavailable. Ensure Firebase is configured and the messaging delegate is set first.
+    if ([FIRApp defaultApp] == nil) {
+        [FIRApp configure];
+    }
+    [FIRMessaging messaging].delegate = self;
     [FIRMessaging messaging].APNSToken = deviceTokenData;
     NSString *deviceToken;
     if (@available(iOS 13, *)) {
